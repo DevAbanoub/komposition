@@ -185,23 +185,33 @@ assertStillLengthAtLeast t = \case
 testSegmentsToPixelFrames :: [TestSegment] -> [Timed MassivFrame]
 testSegmentsToPixelFrames = map (fmap toFrame) . addTimed . foldMap unwrapSegment
 
+genFrameCountAndDuration :: MonadGen m => Range Int -> m (Int, Double)
+genFrameCountAndDuration range = do
+  frameCount <- Gen.int range 
+  let duration = fromIntegral frameCount / fromIntegral frameRate
+  pure (frameCount, duration)
+  
+
 hprop_classifies_still_segments_of_min_length = withTests 100 . property $ do
+  -- Generate a mininum still segment length
+  (minStillFrames, minStillLength) <- forAll $
+    genFrameCountAndDuration (Range.linear frameRate (10 * frameRate))
   -- Generate test segments
   segments <- forAll $ genSegments (Range.linear 1 10)
-                                   (Range.linear 1 (frameRate * 2))
+                                   (Range.linear minStillFrames (minStillFrames * 2))
                                    resolution
   -- Convert test segments to actual pixel frames
   let pixelFrames = testSegmentsToPixelFrames segments
       -- Run classifier on pixel frames
       counted =
-        classifyMovement 2.0 (Pipes.each pixelFrames)
+        classifyMovement minStillLength (Pipes.each pixelFrames)
           & Pipes.toList
           & countSegments
   -- Sanity check: same number of frames
   countTestSegmentFrames segments === totalClassifiedFrames counted
   -- Then ignore first and last segment, and verify all other segments
   case dropFirstAndLast counted of
-    Just middle -> traverse_ (assertStillLengthAtLeast 2.0) middle
+    Just middle -> traverse_ (assertStillLengthAtLeast minStillLength) middle
     Nothing     -> success
   where resolution = 10 :. 10
 
@@ -222,9 +232,12 @@ movingSceneTimeSpans = snd . foldl' go (Duration 0, [])
       Pause _ -> mempty
 
 hprop_classifies_same_scenes_as_input = withShrinks 50 . withTests 100 . property $ do
+  -- Generate a mininum still segment length
+  (minStillFrames, minStillLength) <- forAll $
+    genFrameCountAndDuration (Range.linear frameRate (10 * frameRate))
   -- Generate test segments
   segments <- forAll $ do
-    let segmentLength = Range.linear (frameRate * 1) (frameRate * 5)
+    let segmentLength = Range.linear minStillFrames (minStillFrames * 5)
     genSegments (Range.linear 0 10) segmentLength resolution
   -- Convert test segments to timespanned ones, and actual pixel frames
   let durations = map segmentWithDuration segments
@@ -234,7 +247,7 @@ hprop_classifies_same_scenes_as_input = withShrinks 50 . withTests 100 . propert
 
   let classifiedFrames =
         Pipes.each pixelFrames
-        & classifyMovement 1.0
+        & classifyMovement minStillLength
         & Pipes.toList
 
   annotateShow (map (map time) classifiedFrames)
