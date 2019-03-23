@@ -43,7 +43,7 @@ hprop_flat_timeline_has_same_clips_as_hierarchical =
 hprop_flat_timeline_uses_still_frame_from_single_clip = property $ do
   let genVideoTrack = do
         v1 <- Gen.videoClip
-        vs <- Gen.list (Range.linear 0 1) Gen.videoPart
+        vs <- Gen.list (Range.linear 1 5) Gen.videoGap
         pure (VideoTrack () (v1 : vs))
   timeline' <- forAll $ Gen.timeline
     (Range.exponential 0 5)
@@ -119,15 +119,17 @@ hprop_flat_timeline_uses_last_frame_for_automatic_video_padding = property $ do
 -- * Flattening equivalences
 
 hprop_flat_timeline_is_same_as_all_its_flat_sequences = property $ do
-  timeline' <- forAll $ Gen.timeline (Range.exponential 0 5) Gen.parallel
+  timeline' <- forAll $ Gen.timeline (Range.exponential 0 5) Gen.parallelWithClips
   let flat = timeline' ^.. sequences . each
              & foldMap Render.flattenSequence
+  flat /== Nothing
   Render.flattenTimeline timeline' === flat
 
 hprop_flat_timeline_is_same_as_all_its_flat_parallels = property $ do
-  timeline' <- forAll $ Gen.timeline (Range.exponential 0 5) Gen.parallel
+  timeline' <- forAll $ Gen.timeline (Range.exponential 0 5) Gen.parallelWithClips
   let flat = timeline' ^.. sequences . each . parallels . each
              & foldMap Render.flattenParallel
+  flat /== Nothing
   Render.flattenTimeline timeline' === flat
 
 ----------------------------------------------------------------------
